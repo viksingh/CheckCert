@@ -102,7 +102,7 @@ public class CheckCert implements Module{
 			" CheckCert: Loading Certificate");
 
 			
-			ks.load(new FileInputStream("/tmp/UYcert.pfx"), "Th3N3s7.1819".toCharArray());			
+			ks.load(new FileInputStream("/tmp/UYcert.pfx"), "password".toCharArray());			
 
 			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
 			" CheckCert: Cert loaded");
