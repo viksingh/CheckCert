@@ -1,7 +1,12 @@
 package com.saki.demo;
 
 import java.io.FileInputStream;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.security.Key;
 import java.security.KeyStore;
+import java.security.Provider;
+import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Enumeration;
@@ -43,6 +48,29 @@ import com.sap.engine.interfaces.messaging.api.exception.MessagingException;
 public class CheckCert implements Module{
 
     
+	public static String whereFrom(Object o) {
+		  if ( o == null ) {
+		    return null;
+		  }
+		  Class<?> c = o.getClass();
+		  ClassLoader loader = c.getClassLoader();
+		  if ( loader == null ) {
+		    // Try the bootstrap classloader - obtained from the ultimate parent of the System Class Loader.
+		    loader = ClassLoader.getSystemClassLoader();
+		    while ( loader != null && loader.getParent() != null ) {
+		      loader = loader.getParent();
+		    }
+		  }
+		  if (loader != null) {
+		    String name = c.getCanonicalName();
+		    URL resource = loader.getResource(name.replace(".", "/") + ".class");
+		    if ( resource != null ) {
+		      return resource.toString();
+		    }
+		  }
+		  return "Unknown";
+		}		
+	
 	private AuditAccess audit;
 	
 	public CheckCert() {
@@ -75,7 +103,13 @@ public class CheckCert implements Module{
 		String outputData = "";
 		Boolean checkMetadata;
 		MessageKey key = null;
-
+		
+		
+	    String path = (String) moduleContext.getContextData("path");
+	    String fileName = (String) moduleContext.getContextData("fileName");
+	    String pwdCert = (String) moduleContext.getContextData("pwdCert");
+	    
+	    String fullPath = path + "/" + fileName;
 
 		obj = inputModuleData.getPrincipalData();
 		msg = (Message) obj;			
@@ -97,34 +131,78 @@ public class CheckCert implements Module{
 				" CheckCert: Getting keystore instance PKCS12");
 			   
 			KeyStore ks = KeyStore.getInstance("PKCS12");
-
+			
 			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
-			" CheckCert: Loading Certificate");
+			" Encoding is " + Charset.defaultCharset() );
+			
+			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+			"Full path is " + fullPath );
+			
+			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+			" Password of cert is " + pwdCert);
 
 			
-			ks.load(new FileInputStream("/tmp/UYcert.pfx"), "password".toCharArray());			
+			
+			ks.load(new FileInputStream(fullPath), pwdCert.toCharArray());
+//			ks.load(new FileInputStream(fullPath), pwdCert.toCharArray());
 
 			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
 			" CheckCert: Cert loaded");
+			
+			
+			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,"Keystore location "+whereFrom(ks));
+			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,"JVM version " + Runtime.class.getPackage().getImplementationVersion());
 
 			
-		    Enumeration en = ks.aliases();
-		    String alias = (String)en.nextElement();
+			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+
+					"Keystore size is " + ks.size());
+			
+			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+
+					"Keystore provider is " + ks.getProvider());
 
 			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
-			"Alias is " + alias);
+					"KS type is " + ks.getType() );
+
+			
+		    Enumeration<String> en = ks.aliases();
 		    
-			
-// Why is this null - works on local PC and standalone tests in Java SE environments			
-			Certificate cert = ks.getCertificate(alias);
-			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
-					" CheckCert: Normal cert " + cert.getType() );
+		    for (; en.hasMoreElements();) {
+		    	
+		    	 String alias = (String)en.nextElement();
+				   
+					audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+					"Alias is " + alias );
+				    
+					audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+							"Alias length is " + alias.length() );
 
-			
-		    X509Certificate x509cert = ((X509Certificate)ks.getCertificate(alias));
+					
+					audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
+							" Contains alias: " + alias + " " + ks.containsAlias(alias));
 
-			audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,
-			" CheckCert: Cert loaded" + x509cert.getSubjectDN().getName() +" Valid till : " + x509cert.getNotAfter());
+					
+					audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,"Keystore : Is Cert ? : "+ks.isCertificateEntry(alias));
+					audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,"Keystore : Is Key ? : "+ks.isKeyEntry(alias));
+					
+					
+					 if (ks.isKeyEntry(alias)){
+						    Key key1 = ks.getKey(alias, pwdCert.toCharArray());
+						    audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS, "Key is " +key1.toString());
+						    }					
+					
+					// Why is this null - works on local PC and standalone tests in Java SE environments
+					
+				    X509Certificate x509cert = ((X509Certificate)ks.getCertificate(alias));
+				    
+				    audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS, "Cert type is " + x509cert.getType());
+
+					audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS, " Valid till : " + x509cert.getNotAfter());		    	
+
+		    }
+		    
+		   
 		    
 		    
 //		     PrivateKey privatekey = ((PrivateKey)ks.getKey(alias, "Th3N3s7.1819".toCharArray()));
@@ -136,7 +214,7 @@ public class CheckCert implements Module{
 				audit.addAuditLogEntry(key, AuditLogStatus.SUCCESS,e.getMessage());
 		}		
 		
-		return null;
+		return inputModuleData;
 	}
 
 }
